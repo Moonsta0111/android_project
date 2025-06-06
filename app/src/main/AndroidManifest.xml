@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AlbaPayManager"
+        tools:targetApi="31">
+        <activity
+            android:name=".ui.LoginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.AddWorkerActivity"
+            android:exported="false"
+            android:label="알바생 추가"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.ManageWorkersActivity"
+            android:exported="false"
+            android:label="알바생 관리"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.EditWorkerActivity"
+            android:exported="false"
+            android:label="알바생 정보 수정"
+            android:parentActivityName=".ui.ManageWorkersActivity" />
+        <activity
+            android:name=".ui.InputShiftActivity"
+            android:exported="false"
+            android:label="근무 일정 입력"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.ViewShiftsActivity"
+            android:exported="false"
+            android:label="근무 일정 조회"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.CalculatePayrollActivity"
+            android:exported="false"
+            android:label="급여 계산"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.ViewPayrollActivity"
+            android:exported="false"
+            android:label="급여 내역 조회"
+            android:parentActivityName=".ui.MainActivity" />
+        <activity
+            android:name=".ui.CalendarViewActivity"
+            android:exported="false"
+            android:label="근무 일정 캘린더"
+            android:parentActivityName=".ui.MainActivity" />
+    </application>
+
+</manifest>
