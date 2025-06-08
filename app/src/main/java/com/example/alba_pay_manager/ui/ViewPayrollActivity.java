@@ -19,6 +19,7 @@ import com.example.alba_pay_manager.data.Employee;
 import com.example.alba_pay_manager.data.Shift;
 import com.example.alba_pay_manager.ui.adapter.PayrollAdapter;
 import com.example.alba_pay_manager.util.AuthManager;
+import com.example.alba_pay_manager.util.PayrollCalculator;
 import com.google.android.material.textfield.TextInputEditText;
 
 import java.text.NumberFormat;
@@ -147,19 +148,33 @@ public class ViewPayrollActivity extends AppCompatActivity {
     private void loadPayroll() {
         executorService.execute(() -> {
             try {
-                // Calendar를 LocalDateTime으로 변환
-                LocalDateTime startDateTime = startDate.getTime().toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDateTime();
-                LocalDateTime endDateTime = endDate.getTime().toInstant()
+                // 시작일은 00:00:00으로 설정
+                Calendar startCalendar = (Calendar) startDate.clone();
+                startCalendar.set(Calendar.HOUR_OF_DAY, 0);
+                startCalendar.set(Calendar.MINUTE, 0);
+                startCalendar.set(Calendar.SECOND, 0);
+                LocalDateTime startDateTime = startCalendar.getTime().toInstant()
                     .atZone(ZoneId.systemDefault())
                     .toLocalDateTime();
 
-                // 알바생 목록 조회
-                List<Employee> workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
-                Map<Long, Employee> employeeMap = new HashMap<>();
-                for (Employee employee : workers) {
-                    employeeMap.put(employee.getId(), employee);
+                // 종료일은 23:59:59로 설정
+                Calendar endCalendar = (Calendar) endDate.clone();
+                endCalendar.set(Calendar.HOUR_OF_DAY, 23);
+                endCalendar.set(Calendar.MINUTE, 59);
+                endCalendar.set(Calendar.SECOND, 59);
+                LocalDateTime endDateTime = endCalendar.getTime().toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime();
+
+                List<Employee> workers;
+                if (authManager.isOwner()) {
+                    workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                } else {
+                    // 파트타이머는 본인만
+                    long myId = authManager.getCurrentUser().getId();
+                    Employee me = AppDatabase.getInstance(this).employeeDao().getEmployeeById(myId);
+                    workers = new ArrayList<>();
+                    if (me != null) workers.add(me);
                 }
 
                 // 각 알바생별 급여 계산
@@ -174,22 +189,22 @@ public class ViewPayrollActivity extends AppCompatActivity {
                             );
 
                     if (!shifts.isEmpty()) {
-                        // 총 근무 시간 계산
-                        double totalHours = calculateTotalHours(shifts);
-                        
-                        if (totalHours > 0) {  // 근무 시간이 있는 경우만 처리
-                            // 급여 계산
-                            int totalPay = (int) (totalHours * employee.getHourlyWage());
-
-                            // 급여 내역 아이템 추가
-                            payrollItems.add(new PayrollAdapter.PayrollItem(
-                                    employee.getName(),
-                                    startDate.getTime(),
-                                    endDate.getTime(),
-                                    totalHours,
-                                    totalPay
-                            ));
-                        }
+                        PayrollCalculator.PayrollResult result = PayrollCalculator.calculatePayroll(
+                            employee,
+                            shifts,
+                            true, true, true, true
+                        );
+                        double totalHours = result.getRegularHours() + result.getNightHours() +
+                                            result.getOvertimeHours() + result.getHolidayHours();
+                        int totalPay = result.getTotalPay();
+                        payrollItems.add(new PayrollAdapter.PayrollItem(
+                                employee.getName(),
+                                startDate.getTimeInMillis(),
+                                endDate.getTimeInMillis(),
+                                totalHours,
+                                totalPay,
+                                result
+                        ));
                     }
                 }
 
@@ -208,27 +223,21 @@ public class ViewPayrollActivity extends AppCompatActivity {
     }
 
     private double calculateTotalHours(List<Shift> shifts) {
-        double totalHours = 0;
+        int totalMinutes = 0;
         for (Shift shift : shifts) {
             if (shift.getStartTime() == null || shift.getEndTime() == null) {
-                continue; // 시작 시간이나 종료 시간이 null인 경우 건너뜀
+                continue;
             }
-
             Date shiftStartDate = toDate(shift.getStartTime());
             Date shiftEndDate = toDate(shift.getEndTime());
             long startMillis = shiftStartDate.getTime();
             long endMillis = shiftEndDate.getTime();
-
-            // 종료 시간이 시작 시간보다 이전인 경우 처리
             if (endMillis <= startMillis) {
-                continue; // 잘못된 시간 데이터는 건너뜀
+                continue;
             }
-
-            // 밀리초를 시간으로 변환 (소수점 1자리까지)
-            double hours = (endMillis - startMillis) / (1000.0 * 60 * 60);
-            totalHours += Math.round(hours * 10) / 10.0; // 소수점 1자리까지 반올림
+            totalMinutes += (endMillis - startMillis) / (1000 * 60);
         }
-        return totalHours;
+        return totalMinutes / 60.0; // 기존 반환값 유지(호환성), PayrollAdapter에서 분리 표시
     }
 
     private void updateEmptyView(boolean isEmpty) {

@@ -103,6 +103,11 @@ public class InputShiftActivity extends AppCompatActivity {
         totalHoursTextView = findViewById(R.id.totalHoursTextView);
         errorTextView = findViewById(R.id.errorTextView);
         saveButton = findViewById(R.id.saveButton);
+
+        // 파트타이머라면 알바생 선택 드롭다운 숨김
+        if (!authManager.isOwner()) {
+            employeeLayout.setVisibility(View.GONE);
+        }
     }
 
     private void setupDateAndTime() {
@@ -124,19 +129,25 @@ public class InputShiftActivity extends AppCompatActivity {
     }
 
     private void updateTotalHours() {
-        if (startTime != null && endTime != null) {
-            long diffMillis = endTime.getTimeInMillis() - startTime.getTimeInMillis();
-            long totalMinutes = diffMillis / (1000 * 60);
-            long hours = totalMinutes / 60;
-            long minutes = totalMinutes % 60;
-            totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %d시간 %d분", hours, minutes));
-        }
+        long diffMillis = endTime.getTimeInMillis() - startTime.getTimeInMillis();
+        long totalMinutes = diffMillis / (1000 * 60);
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %d시간 %d분", hours, minutes));
     }
 
     private void loadWorkers() {
         executorService.execute(() -> {
             try {
-                workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                if (authManager.isOwner()) {
+                    workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                } else {
+                    // 파트타이머는 본인만
+                    long myId = authManager.getCurrentUser().getId();
+                    Employee me = AppDatabase.getInstance(this).employeeDao().getEmployeeById(myId);
+                    workers = new java.util.ArrayList<>();
+                    if (me != null) workers.add(me);
+                }
                 String[] workerNames = new String[workers.size()];
                 for (int i = 0; i < workers.size(); i++) {
                     workerNames[i] = workers.get(i).getName();
@@ -184,66 +195,43 @@ public class InputShiftActivity extends AppCompatActivity {
 
         // 시작 시간 선택
         startTimeEditText.setOnClickListener(v -> {
-            int currentHour = startTime.get(Calendar.HOUR_OF_DAY);
-            int currentMinute = startTime.get(Calendar.MINUTE);
-            
-            // 30분 단위로 반올림
-            currentMinute = (currentMinute + 15) / 30 * 30;
-            if (currentMinute == 60) {
-                currentHour = (currentHour + 1) % 24;
-                currentMinute = 0;
-            }
-            
             TimePickerDialog dialog = new TimePickerDialog(
                     this,
                     (view, hourOfDay, minute) -> {
-                        // 30분 단위로 반올림
-                        minute = (minute + 15) / 30 * 30;
-                        if (minute == 60) {
-                            hourOfDay = (hourOfDay + 1) % 24;
-                            minute = 0;
-                        }
-                        
                         startTime.set(Calendar.HOUR_OF_DAY, hourOfDay);
                         startTime.set(Calendar.MINUTE, minute);
+                        if (startTime.after(endTime)) {
+                            endTime.set(Calendar.HOUR_OF_DAY, hourOfDay);
+                            endTime.set(Calendar.MINUTE, minute);
+                            endTime.add(Calendar.HOUR_OF_DAY, 1);
+                        }
                         updateDateAndTimeDisplay();
                     },
-                    currentHour,
-                    currentMinute,
-                    false  // 12시간제 사용
+                    startTime.get(Calendar.HOUR_OF_DAY),
+                    startTime.get(Calendar.MINUTE),
+                    DateFormat.is24HourFormat(this)
             );
             dialog.show();
         });
 
         // 종료 시간 선택
         endTimeEditText.setOnClickListener(v -> {
-            int currentHour = endTime.get(Calendar.HOUR_OF_DAY);
-            int currentMinute = endTime.get(Calendar.MINUTE);
-            
-            // 30분 단위로 반올림
-            currentMinute = (currentMinute + 15) / 30 * 30;
-            if (currentMinute == 60) {
-                currentHour = (currentHour + 1) % 24;
-                currentMinute = 0;
-            }
-            
             TimePickerDialog dialog = new TimePickerDialog(
                     this,
                     (view, hourOfDay, minute) -> {
-                        // 30분 단위로 반올림
-                        minute = (minute + 15) / 30 * 30;
-                        if (minute == 60) {
-                            hourOfDay = (hourOfDay + 1) % 24;
-                            minute = 0;
-                        }
-                        
                         endTime.set(Calendar.HOUR_OF_DAY, hourOfDay);
                         endTime.set(Calendar.MINUTE, minute);
+                        if (endTime.before(startTime)) {
+                            Toast.makeText(this, "종료 시간은 시작 시간보다 이후여야 합니다.", Toast.LENGTH_SHORT).show();
+                            endTime.set(Calendar.HOUR_OF_DAY, startTime.get(Calendar.HOUR_OF_DAY));
+                            endTime.set(Calendar.MINUTE, startTime.get(Calendar.MINUTE));
+                            endTime.add(Calendar.HOUR_OF_DAY, 1);
+                        }
                         updateDateAndTimeDisplay();
                     },
-                    currentHour,
-                    currentMinute,
-                    false  // 12시간제 사용
+                    endTime.get(Calendar.HOUR_OF_DAY),
+                    endTime.get(Calendar.MINUTE),
+                    DateFormat.is24HourFormat(this)
             );
             dialog.show();
         });

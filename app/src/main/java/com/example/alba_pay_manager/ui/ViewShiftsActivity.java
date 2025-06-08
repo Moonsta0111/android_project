@@ -89,6 +89,11 @@ public class ViewShiftsActivity extends AppCompatActivity {
         shiftsRecyclerView = findViewById(R.id.shiftsRecyclerView);
         emptyView = findViewById(R.id.emptyView);
         totalHoursTextView = findViewById(R.id.totalHoursTextView);
+
+        // 파트타이머라면 알바생 선택 드롭다운 숨김
+        if (!authManager.isOwner()) {
+            employeeAutoComplete.setVisibility(View.GONE);
+        }
     }
 
     private void setupRecyclerView() {
@@ -181,25 +186,46 @@ public class ViewShiftsActivity extends AppCompatActivity {
     private void loadShifts() {
         executorService.execute(() -> {
             try {
-                // Calendar를 LocalDateTime으로 변환
-                LocalDateTime startDateTime = startDate.getTime().toInstant()
+                // 시작일은 00:00:00으로 설정
+                Calendar startCalendar = (Calendar) startDate.clone();
+                startCalendar.set(Calendar.HOUR_OF_DAY, 0);
+                startCalendar.set(Calendar.MINUTE, 0);
+                startCalendar.set(Calendar.SECOND, 0);
+                LocalDateTime startDateTime = startCalendar.getTime().toInstant()
                     .atZone(ZoneId.systemDefault())
                     .toLocalDateTime();
-                LocalDateTime endDateTime = endDate.getTime().toInstant()
+
+                // 종료일은 23:59:59로 설정
+                Calendar endCalendar = (Calendar) endDate.clone();
+                endCalendar.set(Calendar.HOUR_OF_DAY, 23);
+                endCalendar.set(Calendar.MINUTE, 59);
+                endCalendar.set(Calendar.SECOND, 59);
+                LocalDateTime endDateTime = endCalendar.getTime().toInstant()
                     .atZone(ZoneId.systemDefault())
                     .toLocalDateTime();
 
                 List<Shift> shifts;
-                if (selectedEmployee != null) {
+                if (authManager.isOwner()) {
+                    if (selectedEmployee != null) {
+                        shifts = AppDatabase.getInstance(this).shiftDao()
+                                .getShiftsByEmployeeAndDateRange(
+                                        selectedEmployee.getId(),
+                                        startDateTime,
+                                        endDateTime
+                                );
+                    } else {
+                        shifts = AppDatabase.getInstance(this).shiftDao()
+                                .getShiftsByDateRange(startDateTime, endDateTime);
+                    }
+                } else {
+                    // 파트타이머는 본인 데이터만
+                    long myId = authManager.getCurrentUser().getId();
                     shifts = AppDatabase.getInstance(this).shiftDao()
                             .getShiftsByEmployeeAndDateRange(
-                                    selectedEmployee.getId(),
+                                    myId,
                                     startDateTime,
                                     endDateTime
                             );
-                } else {
-                    shifts = AppDatabase.getInstance(this).shiftDao()
-                            .getShiftsByDateRange(startDateTime, endDateTime);
                 }
 
                 // 알바생 정보 맵 생성
@@ -229,7 +255,10 @@ public class ViewShiftsActivity extends AppCompatActivity {
 
     private void updateTotalHours() {
         double totalHours = adapter.getTotalHours();
-        totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %.1f시간", totalHours));
+        long totalMinutes = (long)(totalHours * 60);
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %d시간 %d분", hours, minutes));
     }
 
     @Override

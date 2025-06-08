@@ -3,63 +3,50 @@ package com.example.alba_pay_manager.ui;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
-import android.widget.Button;
-import android.widget.GridLayout;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.Spinner;
+import android.widget.AdapterView;
+import android.widget.CalendarView;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.cardview.widget.CardView;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.alba_pay_manager.R;
 import com.example.alba_pay_manager.data.AppDatabase;
 import com.example.alba_pay_manager.data.Employee;
 import com.example.alba_pay_manager.data.Shift;
-import com.example.alba_pay_manager.ui.adapter.ShiftAdapter;
-import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 
-import java.text.SimpleDateFormat;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.WeekFields;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class CalendarViewActivity extends AppCompatActivity {
     private static final String TAG = "CalendarViewActivity";
-
-    private AutoCompleteTextView employeeAutoComplete;
-    private Button prevMonthButton;
-    private Button nextMonthButton;
-    private TextView currentMonthTextView;
-    private GridLayout calendarGrid;
-    private CardView shiftDetailsCard;
-    private TextView selectedDateTextView;
-    private RecyclerView shiftsRecyclerView;
+    private CalendarView calendarView;
+    private MaterialAutoCompleteTextView employeeDropdown;
+    private ListView shiftListView;
     private TextView emptyView;
+    private TextView selectedDateTextView;
 
     private ExecutorService executorService;
-    private Calendar currentMonth;
-    private SimpleDateFormat monthFormat;
-    private SimpleDateFormat dateFormat;
     private List<Employee> workers;
-    private Map<Long, Employee> employeeMap;
-    private Map<String, List<Shift>> shiftsByDate;
     private Employee selectedEmployee;
-    private Date selectedDate;
-    private ShiftAdapter shiftAdapter;
+    private long selectedDateMillis;
+    private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy년 MM월 dd일", Locale.KOREA);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,173 +61,42 @@ public class CalendarViewActivity extends AppCompatActivity {
 
         // 초기화
         executorService = Executors.newSingleThreadExecutor();
-        currentMonth = Calendar.getInstance();
-        monthFormat = new SimpleDateFormat("yyyy년 MM월", Locale.KOREA);
-        dateFormat = new SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREA);
-        shiftsByDate = new HashMap<>();
-        workers = new ArrayList<>();
-        employeeMap = new HashMap<>();
+        selectedDateMillis = System.currentTimeMillis();
 
         initializeViews();
-        setupRecyclerView();
-        setupListeners();
+        // 파트타이머라면 드롭다운 숨김
+        if (!new com.example.alba_pay_manager.util.AuthManager(this).isOwner()) {
+            employeeDropdown.setVisibility(View.GONE);
+        }
         loadWorkers();
+        setupListeners();
     }
 
     private void initializeViews() {
-        employeeAutoComplete = findViewById(R.id.employeeAutoComplete);
-        prevMonthButton = findViewById(R.id.prevMonthButton);
-        nextMonthButton = findViewById(R.id.nextMonthButton);
-        currentMonthTextView = findViewById(R.id.currentMonthTextView);
-        calendarGrid = findViewById(R.id.calendarGrid);
-        shiftDetailsCard = findViewById(R.id.shiftDetailsCard);
-        selectedDateTextView = findViewById(R.id.selectedDateTextView);
-        shiftsRecyclerView = findViewById(R.id.shiftsRecyclerView);
+        calendarView = findViewById(R.id.calendarView);
+        employeeDropdown = findViewById(R.id.employeeDropdown);
+        shiftListView = findViewById(R.id.shiftListView);
         emptyView = findViewById(R.id.emptyView);
-
-        updateMonthDisplay();
-    }
-
-    private void setupRecyclerView() {
-        shiftAdapter = new ShiftAdapter();
-        shiftsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        shiftsRecyclerView.setAdapter(shiftAdapter);
-    }
-
-    private void setupListeners() {
-        // 이전 달 버튼
-        prevMonthButton.setOnClickListener(v -> {
-            currentMonth.add(Calendar.MONTH, -1);
-            updateMonthDisplay();
-            loadShifts();
-        });
-
-        // 다음 달 버튼
-        nextMonthButton.setOnClickListener(v -> {
-            currentMonth.add(Calendar.MONTH, 1);
-            updateMonthDisplay();
-            loadShifts();
-        });
-
-        // 알바생 선택
-        employeeAutoComplete.setOnItemClickListener((parent, view, position, id) -> {
-            selectedEmployee = workers.get(position);
-            loadShifts();
-        });
-    }
-
-    private void updateMonthDisplay() {
-        currentMonthTextView.setText(monthFormat.format(currentMonth.getTime()));
-        updateCalendarGrid();
-    }
-
-    private void updateCalendarGrid() {
-        // 기존 날짜 버튼 제거
-        calendarGrid.removeAllViews();
-        // 요일 헤더는 유지 (7개)
-        for (int i = 0; i < 7; i++) {
-            calendarGrid.getChildAt(i).setVisibility(View.VISIBLE);
-        }
-
-        // 이번 달의 첫 날
-        Calendar firstDay = (Calendar) currentMonth.clone();
-        firstDay.set(Calendar.DAY_OF_MONTH, 1);
-
-        // 이번 달의 마지막 날
-        Calendar lastDay = (Calendar) currentMonth.clone();
-        lastDay.set(Calendar.DAY_OF_MONTH, lastDay.getActualMaximum(Calendar.DAY_OF_MONTH));
-
-        // 첫 날의 요일 (0: 일요일, 6: 토요일)
-        int firstDayOfWeek = firstDay.get(Calendar.DAY_OF_WEEK) - 1;
-
-        // 이전 달의 마지막 날짜들
-        Calendar prevMonth = (Calendar) firstDay.clone();
-        prevMonth.add(Calendar.DAY_OF_MONTH, -firstDayOfWeek);
-        for (int i = 0; i < firstDayOfWeek; i++) {
-            addDateButton(prevMonth.getTime(), true);
-            prevMonth.add(Calendar.DAY_OF_MONTH, 1);
-        }
-
-        // 이번 달 날짜들
-        Calendar current = (Calendar) firstDay.clone();
-        while (current.get(Calendar.MONTH) == currentMonth.get(Calendar.MONTH)) {
-            addDateButton(current.getTime(), false);
-            current.add(Calendar.DAY_OF_MONTH, 1);
-        }
-
-        // 다음 달의 시작 날짜들
-        while (calendarGrid.getChildCount() < 42) { // 6주 * 7일
-            addDateButton(current.getTime(), true);
-            current.add(Calendar.DAY_OF_MONTH, 1);
-        }
-    }
-
-    private void addDateButton(Date date, boolean isOtherMonth) {
-        MaterialCardView cardView = new MaterialCardView(this);
-        GridLayout.LayoutParams params = new GridLayout.LayoutParams();
-        params.width = 0;
-        params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-        params.setMargins(4, 4, 4, 4);
-        cardView.setLayoutParams(params);
-        cardView.setCardElevation(2);
-        cardView.setRadius(8);
-        cardView.setCardBackgroundColor(getResources().getColor(
-            isOtherMonth ? android.R.color.darker_gray : android.R.color.white));
-
-        TextView textView = new TextView(this);
-        textView.setLayoutParams(new ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT));
-        textView.setGravity(View.TEXT_ALIGNMENT_CENTER);
-        textView.setPadding(8, 8, 8, 8);
-
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(date);
-        textView.setText(String.valueOf(cal.get(Calendar.DAY_OF_MONTH)));
-
-        // 주말 색상 설정
-        int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
-        if (dayOfWeek == Calendar.SUNDAY) {
-            textView.setTextColor(getResources().getColor(android.R.color.holo_red_light));
-        } else if (dayOfWeek == Calendar.SATURDAY) {
-            textView.setTextColor(getResources().getColor(android.R.color.holo_blue_light));
-        }
-
-        // 근무 일정이 있는 날짜 표시
-        String dateKey = dateFormat.format(date);
-        if (shiftsByDate.containsKey(dateKey)) {
-            cardView.setStrokeWidth(4);
-            cardView.setStrokeColor(getResources().getColor(android.R.color.holo_green_light));
-        }
-
-        cardView.setOnClickListener(v -> showShiftDetails(date));
-        cardView.addView(textView);
-        calendarGrid.addView(cardView);
+        selectedDateTextView = findViewById(R.id.selectedDateTextView);
     }
 
     private void loadWorkers() {
         executorService.execute(() -> {
             try {
-                List<Employee> loadedWorkers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                List<String> workerNames = new ArrayList<>();
+                workerNames.add("전체");  // "전체" 옵션 추가
+                for (Employee worker : workers) {
+                    workerNames.add(worker.getName());
+                }
+
                 runOnUiThread(() -> {
-                    workers.clear();
-                    workers.addAll(loadedWorkers);
-                    employeeMap.clear();
-                    for (Employee worker : workers) {
-                        employeeMap.put(worker.getId(), worker);
-                    }
-                    
-                    // 알바생 목록을 AutoCompleteTextView에 설정
-                    ArrayAdapter<Employee> adapter = new ArrayAdapter<>(
-                        this,
-                        android.R.layout.simple_dropdown_item_1line,
-                        workers
+                    ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                            this,
+                            android.R.layout.simple_dropdown_item_1line,
+                            workerNames
                     );
-                    employeeAutoComplete.setAdapter(adapter);
-                    
-                    // 초기 근무 일정 로드
-                    loadShifts();
+                    employeeDropdown.setAdapter(adapter);
                 });
             } catch (Exception e) {
                 Log.e(TAG, "알바생 목록 로드 중 오류 발생", e);
@@ -251,55 +107,102 @@ public class CalendarViewActivity extends AppCompatActivity {
         });
     }
 
-    private void loadShifts() {
+    private void setupListeners() {
+        // 알바생 선택
+        employeeDropdown.setOnItemClickListener((parent, view, position, id) -> {
+            if (position == 0) {  // "전체" 선택
+                selectedEmployee = null;
+            } else {
+                selectedEmployee = workers.get(position - 1);  // "전체" 옵션 때문에 인덱스 조정
+            }
+            loadShiftsForSelectedDate();
+        });
+
+        // 날짜 선택
+        calendarView.setOnDateChangeListener((view, year, month, dayOfMonth) -> {
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            cal.set(year, month, dayOfMonth, 0, 0, 0);
+            selectedDateMillis = cal.getTimeInMillis();
+            loadShiftsForSelectedDate();
+        });
+    }
+
+    private void loadShiftsForSelectedDate() {
         executorService.execute(() -> {
             try {
-                // 월의 시작일과 종료일 설정
-                Calendar calendar = (Calendar) currentMonth.clone();
-                calendar.set(Calendar.DAY_OF_MONTH, 1);
-                calendar.set(Calendar.HOUR_OF_DAY, 0);
-                calendar.set(Calendar.MINUTE, 0);
-                calendar.set(Calendar.SECOND, 0);
-                Date startDate = calendar.getTime();
-                LocalDateTime startDateTime = startDate.toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDateTime();
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                cal.setTimeInMillis(selectedDateMillis);
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+                cal.set(java.util.Calendar.MINUTE, 0);
+                cal.set(java.util.Calendar.SECOND, 0);
+                cal.set(java.util.Calendar.MILLISECOND, 0);
+                long startMillis = cal.getTimeInMillis();
+                cal.add(java.util.Calendar.DATE, 1);
+                long endMillis = cal.getTimeInMillis();
 
-                calendar.add(Calendar.MONTH, 1);
-                calendar.add(Calendar.DAY_OF_MONTH, -1);
-                calendar.set(Calendar.HOUR_OF_DAY, 23);
-                calendar.set(Calendar.MINUTE, 59);
-                calendar.set(Calendar.SECOND, 59);
-                Date endDate = calendar.getTime();
-                LocalDateTime endDateTime = endDate.toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDateTime();
+                LocalDateTime startDateTime = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(startMillis), ZoneId.systemDefault());
+                LocalDateTime endDateTime = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(endMillis), ZoneId.systemDefault());
 
                 List<Shift> shifts;
-                if (selectedEmployee != null) {
-                    shifts = AppDatabase.getInstance(this).shiftDao()
-                            .getShiftsByEmployeeAndDateRange(
+                if (new com.example.alba_pay_manager.util.AuthManager(this).isOwner()) {
+                    if (selectedEmployee != null) {
+                        shifts = AppDatabase.getInstance(this).shiftDao()
+                                .getShiftsByEmployeeAndDateRange(
                                     selectedEmployee.getId(),
                                     startDateTime,
                                     endDateTime
-                            );
+                                );
+                    } else {
+                        shifts = AppDatabase.getInstance(this).shiftDao()
+                                .getShiftsByDateRange(startDateTime, endDateTime);
+                    }
                 } else {
+                    // 파트타이머는 본인 데이터만
+                    long myId = new com.example.alba_pay_manager.util.AuthManager(this).getCurrentUser().getId();
                     shifts = AppDatabase.getInstance(this).shiftDao()
-                            .getShiftsByDateRange(startDateTime, endDateTime);
-                }
-
-                // 날짜별로 근무 일정 정리
-                Map<String, List<Shift>> newShiftsByDate = new HashMap<>();
-                for (Shift shift : shifts) {
-                    Date shiftDate = toDate(shift.getStartTime());
-                    String dateKey = dateFormat.format(shiftDate);
-                    newShiftsByDate.computeIfAbsent(dateKey, k -> new ArrayList<>()).add(shift);
+                            .getShiftsByEmployeeAndDateRange(
+                                    myId,
+                                    startDateTime,
+                                    endDateTime
+                            );
                 }
 
                 runOnUiThread(() -> {
-                    shiftsByDate.clear();
-                    shiftsByDate.putAll(newShiftsByDate);
-                    updateCalendarGrid();
+                    java.time.LocalDate selectedDate = startDateTime.toLocalDate();
+                    selectedDateTextView.setText(selectedDate.format(dateFormatter));
+
+                    if (shifts.isEmpty()) {
+                        emptyView.setVisibility(View.VISIBLE);
+                        shiftListView.setVisibility(View.GONE);
+                    } else {
+                        emptyView.setVisibility(View.GONE);
+                        shiftListView.setVisibility(View.VISIBLE);
+
+                        List<String> shiftStrings = new ArrayList<>();
+                        for (Shift shift : shifts) {
+                            Employee employee = null;
+                            for (Employee worker : workers) {
+                                if (worker.getId() == shift.getEmployeeId()) {
+                                    employee = worker;
+                                    break;
+                                }
+                            }
+
+                            String employeeName = employee != null ? employee.getName() : "알 수 없음";
+                            String startTime = shift.getStartTime().format(
+                                DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA));
+                            String endTime = shift.getEndTime().format(
+                                DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA));
+                            shiftStrings.add(String.format("%s: %s ~ %s", employeeName, startTime, endTime));
+                        }
+
+                        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                            this,
+                            android.R.layout.simple_list_item_1,
+                            shiftStrings
+                        );
+                        shiftListView.setAdapter(adapter);
+                    }
                 });
             } catch (Exception e) {
                 Log.e(TAG, "근무 일정 로드 중 오류 발생", e);
@@ -308,26 +211,6 @@ public class CalendarViewActivity extends AppCompatActivity {
                 });
             }
         });
-    }
-
-    private Date toDate(LocalDateTime dateTime) {
-        return Date.from(dateTime.atZone(ZoneId.systemDefault()).toInstant());
-    }
-
-    private void showShiftDetails(Date date) {
-        selectedDate = date;
-        String dateKey = dateFormat.format(date);
-        List<Shift> shifts = shiftsByDate.get(dateKey);
-
-        if (shifts != null && !shifts.isEmpty()) {
-            selectedDateTextView.setText(dateKey);
-            shiftAdapter.setShifts(shifts, employeeMap);
-            shiftDetailsCard.setVisibility(View.VISIBLE);
-            emptyView.setVisibility(View.GONE);
-        } else {
-            shiftDetailsCard.setVisibility(View.GONE);
-            emptyView.setVisibility(View.VISIBLE);
-        }
     }
 
     @Override

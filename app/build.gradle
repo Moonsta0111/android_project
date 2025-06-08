@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.example.alba_pay_manager'
-    compileSdk 34
+    compileSdkVersion 35
 
     defaultConfig {
         applicationId "com.example.alba_pay_manager"
         minSdkVersion 26
-        targetSdk 34
+        targetSdkVersion 35
         versionCode 1
         versionName "1.0"
 
@@ -70,4 +70,6 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.11.0'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+
+    implementation 'com.kizitonwose.calendar:view:2.4.1'
 } 

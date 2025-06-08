@@ -19,26 +19,28 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <LinearLayout
+    <!-- 모든 내용을 하나의 ScrollView로 감쌈 -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
+        android:fillViewport="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <!-- 필터 영역 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- 상단 입력 영역 (알바생 선택, 날짜, 버튼) -->
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/employeeLayout"
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:hint="알바생 선택">
+                android:hint="알바생 선택"
+                android:visibility="visible">
 
                 <AutoCompleteTextView
                     android:id="@+id/employeeAutoComplete"
@@ -99,75 +101,179 @@
                 android:text="급여 계산"
                 android:layout_marginBottom="16dp"/>
 
-        </LinearLayout>
-
-        <!-- 급여 계산 결과 -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            app:cardElevation="4dp"
-            app:cardCornerRadius="8dp">
-
+            <!-- 수당 설정 체크박스 영역 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
-
+                android:layout_marginBottom="16dp">
                 <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="수당 설정"
+                    android:textStyle="bold"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="8dp"/>
+                <CheckBox
+                    android:id="@+id/nightAllowanceCheckBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="급여 계산 결과"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
+                    android:text="야간수당 적용 (오후 10시 ~ 오전 6시, 시급의 1.5배)"
+                    android:layout_marginBottom="8dp"/>
+                <CheckBox
+                    android:id="@+id/overtimeAllowanceCheckBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="연장근로수당 적용 (1일 8시간 초과, 시급의 1.5배)"
+                    android:layout_marginBottom="8dp"/>
+                <CheckBox
+                    android:id="@+id/holidayAllowanceCheckBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="휴일근로수당 적용 (주말/공휴일, 시급의 1.5배)"
+                    android:layout_marginBottom="8dp"/>
+                <CheckBox
+                    android:id="@+id/weeklyAllowanceCheckBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="주휴수당 적용 (주 15시간 이상 근무 시)"
                     android:layout_marginBottom="16dp"/>
-
-                <TextView
-                    android:id="@+id/totalHoursTextView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="총 근무 시간: 0시간"
-                    android:textSize="16sp"
-                    android:layout_marginBottom="8dp"/>
-
-                <TextView
-                    android:id="@+id/hourlyWageTextView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="시급: 0원"
-                    android:textSize="16sp"
-                    android:layout_marginBottom="8dp"/>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="?android:attr/listDivider"
-                    android:layout_marginVertical="8dp"/>
-
-                <TextView
-                    android:id="@+id/totalPayTextView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="총 급여: 0원"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:textColor="?attr/colorPrimary"/>
-
             </LinearLayout>
 
-        </androidx.cardview.widget.CardView>
+            <!-- 급여 계산 결과 -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="16dp"
+                app:cardElevation="4dp"
+                app:cardCornerRadius="8dp">
 
-        <!-- 빈 화면 표시 -->
-        <TextView
-            android:id="@+id/emptyView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="근무 기록이 없습니다."
-            android:gravity="center"
-            android:padding="16dp"
-            android:visibility="gone"/>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-    </LinearLayout>
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="급여 계산 결과"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="16dp"/>
+
+                    <!-- 계산 결과 -->
+                    <TextView
+                        android:id="@+id/totalHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="총 근무 시간: 0시간"
+                        android:textSize="16sp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                        android:id="@+id/hourlyWageTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="시급: 0원"
+                        android:textSize="16sp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <!-- 상세 내역 -->
+                    <TextView
+                        android:id="@+id/regularHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/regularPayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/nightHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/nightPayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/overtimeHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/overtimePayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/holidayHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/holidayPayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/weeklyAllowanceHoursTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/weeklyAllowancePayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                        android:id="@+id/totalPayTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="총 급여: 0원"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorPrimary"/>
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- 빈 화면 표시 -->
+            <TextView
+                android:id="@+id/emptyView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="근무 기록이 없습니다."
+                android:gravity="center"
+                android:padding="16dp"
+                android:visibility="gone"/>
+
+        </LinearLayout>
+    </ScrollView>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout> 

@@ -7,6 +7,7 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -17,6 +18,8 @@ import com.example.alba_pay_manager.R;
 import com.example.alba_pay_manager.data.AppDatabase;
 import com.example.alba_pay_manager.data.Employee;
 import com.example.alba_pay_manager.data.Shift;
+import com.example.alba_pay_manager.util.AuthManager;
+import com.example.alba_pay_manager.util.PayrollCalculator;
 import com.google.android.material.textfield.TextInputEditText;
 
 import java.text.NumberFormat;
@@ -41,6 +44,20 @@ public class CalculatePayrollActivity extends AppCompatActivity {
     private TextView hourlyWageTextView;
     private TextView totalPayTextView;
     private TextView emptyView;
+    private CheckBox nightAllowanceCheckBox;
+    private CheckBox overtimeAllowanceCheckBox;
+    private CheckBox holidayAllowanceCheckBox;
+    private CheckBox weeklyAllowanceCheckBox;
+    private TextView regularHoursTextView;
+    private TextView nightHoursTextView;
+    private TextView overtimeHoursTextView;
+    private TextView holidayHoursTextView;
+    private TextView weeklyAllowanceHoursTextView;
+    private TextView regularPayTextView;
+    private TextView nightPayTextView;
+    private TextView overtimePayTextView;
+    private TextView holidayPayTextView;
+    private TextView weeklyAllowancePayTextView;
 
     private ExecutorService executorService;
     private Calendar startDate;
@@ -49,6 +66,7 @@ public class CalculatePayrollActivity extends AppCompatActivity {
     private List<Employee> workers;
     private SimpleDateFormat dateFormat;
     private NumberFormat currencyFormat;
+    private AuthManager authManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +83,7 @@ public class CalculatePayrollActivity extends AppCompatActivity {
         executorService = Executors.newSingleThreadExecutor();
         dateFormat = new SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREA);
         currencyFormat = NumberFormat.getCurrencyInstance(Locale.KOREA);
+        authManager = new AuthManager(this);
 
         initializeViews();
         setupDateAndTime();
@@ -81,6 +100,25 @@ public class CalculatePayrollActivity extends AppCompatActivity {
         hourlyWageTextView = findViewById(R.id.hourlyWageTextView);
         totalPayTextView = findViewById(R.id.totalPayTextView);
         emptyView = findViewById(R.id.emptyView);
+        nightAllowanceCheckBox = findViewById(R.id.nightAllowanceCheckBox);
+        overtimeAllowanceCheckBox = findViewById(R.id.overtimeAllowanceCheckBox);
+        holidayAllowanceCheckBox = findViewById(R.id.holidayAllowanceCheckBox);
+        weeklyAllowanceCheckBox = findViewById(R.id.weeklyAllowanceCheckBox);
+        regularHoursTextView = findViewById(R.id.regularHoursTextView);
+        nightHoursTextView = findViewById(R.id.nightHoursTextView);
+        overtimeHoursTextView = findViewById(R.id.overtimeHoursTextView);
+        holidayHoursTextView = findViewById(R.id.holidayHoursTextView);
+        weeklyAllowanceHoursTextView = findViewById(R.id.weeklyAllowanceHoursTextView);
+        regularPayTextView = findViewById(R.id.regularPayTextView);
+        nightPayTextView = findViewById(R.id.nightPayTextView);
+        overtimePayTextView = findViewById(R.id.overtimePayTextView);
+        holidayPayTextView = findViewById(R.id.holidayPayTextView);
+        weeklyAllowancePayTextView = findViewById(R.id.weeklyAllowancePayTextView);
+
+        // 파트타이머라면 알바생 선택 드롭다운 숨김
+        if (!authManager.isOwner()) {
+            employeeAutoComplete.setVisibility(View.GONE);
+        }
     }
 
     private void setupDateAndTime() {
@@ -101,7 +139,15 @@ public class CalculatePayrollActivity extends AppCompatActivity {
     private void loadWorkers() {
         executorService.execute(() -> {
             try {
-                workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                if (authManager.isOwner()) {
+                    workers = AppDatabase.getInstance(this).employeeDao().getAllWorkers();
+                } else {
+                    // 파트타이머는 본인만
+                    long myId = authManager.getCurrentUser().getId();
+                    Employee me = AppDatabase.getInstance(this).employeeDao().getEmployeeById(myId);
+                    workers = new java.util.ArrayList<>();
+                    if (me != null) workers.add(me);
+                }
                 String[] workerNames = new String[workers.size()];
                 for (int i = 0; i < workers.size(); i++) {
                     workerNames[i] = workers.get(i).getName();
@@ -184,11 +230,21 @@ public class CalculatePayrollActivity extends AppCompatActivity {
 
         executorService.execute(() -> {
             try {
-                // Calendar를 LocalDateTime으로 변환
-                LocalDateTime startDateTime = startDate.getTime().toInstant()
+                // 시작일은 00:00:00으로 설정
+                Calendar startCalendar = (Calendar) startDate.clone();
+                startCalendar.set(Calendar.HOUR_OF_DAY, 0);
+                startCalendar.set(Calendar.MINUTE, 0);
+                startCalendar.set(Calendar.SECOND, 0);
+                LocalDateTime startDateTime = startCalendar.getTime().toInstant()
                     .atZone(ZoneId.systemDefault())
                     .toLocalDateTime();
-                LocalDateTime endDateTime = endDate.getTime().toInstant()
+
+                // 종료일은 23:59:59로 설정
+                Calendar endCalendar = (Calendar) endDate.clone();
+                endCalendar.set(Calendar.HOUR_OF_DAY, 23);
+                endCalendar.set(Calendar.MINUTE, 59);
+                endCalendar.set(Calendar.SECOND, 59);
+                LocalDateTime endDateTime = endCalendar.getTime().toInstant()
                     .atZone(ZoneId.systemDefault())
                     .toLocalDateTime();
 
@@ -199,36 +255,120 @@ public class CalculatePayrollActivity extends AppCompatActivity {
                             endDateTime
                         );
 
-                double totalHours = 0;
-                for (Shift shift : shifts) {
-                    Date shiftStartDate = toDate(shift.getStartTime());
-                    Date shiftEndDate = toDate(shift.getEndTime());
-                    long diffMillis = shiftEndDate.getTime() - shiftStartDate.getTime();
-                    totalHours += diffMillis / (1000.0 * 60 * 60);
-                }
-
-                // 급여 계산
-                final double finalTotalHours = totalHours;
-                final int hourlyWage = selectedEmployee.getHourlyWage();
-                final int totalPay = (int) (totalHours * hourlyWage);
+                // 모든 수당을 자동 적용
+                PayrollCalculator.PayrollResult result = PayrollCalculator.calculatePayroll(
+                    selectedEmployee,
+                    shifts,
+                    true, // nightAllowance
+                    true, // overtimeAllowance
+                    true, // holidayAllowance
+                    true  // weeklyAllowance
+                );
 
                 runOnUiThread(() -> {
+                    // 체크박스 UI 동기화 및 비활성화
+                    nightAllowanceCheckBox.setChecked(result.getNightHours() > 0);
+                    nightAllowanceCheckBox.setEnabled(false);
+                    overtimeAllowanceCheckBox.setChecked(result.getOvertimeHours() > 0);
+                    overtimeAllowanceCheckBox.setEnabled(false);
+                    holidayAllowanceCheckBox.setChecked(result.getHolidayHours() > 0);
+                    holidayAllowanceCheckBox.setEnabled(false);
+                    weeklyAllowanceCheckBox.setChecked(result.getWeeklyAllowanceHours() > 0);
+                    weeklyAllowanceCheckBox.setEnabled(false);
+
                     if (shifts.isEmpty()) {
                         emptyView.setVisibility(View.VISIBLE);
                         totalHoursTextView.setVisibility(View.GONE);
                         hourlyWageTextView.setVisibility(View.GONE);
                         totalPayTextView.setVisibility(View.GONE);
+                        regularHoursTextView.setVisibility(View.GONE);
+                        nightHoursTextView.setVisibility(View.GONE);
+                        overtimeHoursTextView.setVisibility(View.GONE);
+                        holidayHoursTextView.setVisibility(View.GONE);
+                        weeklyAllowanceHoursTextView.setVisibility(View.GONE);
+                        regularPayTextView.setVisibility(View.GONE);
+                        nightPayTextView.setVisibility(View.GONE);
+                        overtimePayTextView.setVisibility(View.GONE);
+                        holidayPayTextView.setVisibility(View.GONE);
+                        weeklyAllowancePayTextView.setVisibility(View.GONE);
                     } else {
                         emptyView.setVisibility(View.GONE);
                         totalHoursTextView.setVisibility(View.VISIBLE);
                         hourlyWageTextView.setVisibility(View.VISIBLE);
                         totalPayTextView.setVisibility(View.VISIBLE);
+                        regularHoursTextView.setVisibility(View.VISIBLE);
+                        nightHoursTextView.setVisibility(View.VISIBLE);
+                        overtimeHoursTextView.setVisibility(View.VISIBLE);
+                        holidayHoursTextView.setVisibility(View.VISIBLE);
+                        weeklyAllowanceHoursTextView.setVisibility(View.VISIBLE);
+                        regularPayTextView.setVisibility(View.VISIBLE);
+                        nightPayTextView.setVisibility(View.VISIBLE);
+                        overtimePayTextView.setVisibility(View.VISIBLE);
+                        holidayPayTextView.setVisibility(View.VISIBLE);
+                        weeklyAllowancePayTextView.setVisibility(View.VISIBLE);
 
-                        totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %.1f시간", finalTotalHours));
-                        hourlyWageTextView.setText(String.format(Locale.KOREA, "시급: %s", 
-                            currencyFormat.format(hourlyWage)));
-                        totalPayTextView.setText(String.format(Locale.KOREA, "총 급여: %s", 
-                            currencyFormat.format(totalPay)));
+                        double totalHours = result.getRegularHours() + result.getNightHours() +
+                                          result.getOvertimeHours() + result.getHolidayHours();
+
+                        long totalMinutes = (long)(totalHours * 60);
+                        long hours = totalMinutes / 60;
+                        long minutes = totalMinutes % 60;
+                        totalHoursTextView.setText(String.format(Locale.KOREA, "총 근무 시간: %d시간 %d분", hours, minutes));
+                        hourlyWageTextView.setText(String.format(Locale.KOREA, 
+                            "시급: %s", currencyFormat.format(selectedEmployee.getHourlyWage())));
+                        totalPayTextView.setText(String.format(Locale.KOREA, 
+                            "총 급여: %s", currencyFormat.format(result.getTotalPay())));
+
+                        // 상세 내역 표시
+                        regularHoursTextView.setText(String.format(Locale.KOREA, 
+                            "일반 근무시간: %.1f시간 (%s)", 
+                            result.getRegularHours(), 
+                            currencyFormat.format(result.getRegularPay())));
+                        
+                        if (result.getNightHours() > 0) {
+                            nightHoursTextView.setText(String.format(Locale.KOREA, 
+                                "야간 근무시간: %.1f시간 (%s)", 
+                                result.getNightHours(), 
+                                currencyFormat.format(result.getNightPay())));
+                            nightHoursTextView.setVisibility(View.VISIBLE);
+                        } else {
+                            nightHoursTextView.setVisibility(View.GONE);
+                        }
+
+                        if (result.getOvertimeHours() > 0) {
+                            overtimeHoursTextView.setText(String.format(Locale.KOREA, 
+                                "연장 근무시간: %.1f시간 (%s)", 
+                                result.getOvertimeHours(), 
+                                currencyFormat.format(result.getOvertimePay())));
+                            overtimeHoursTextView.setVisibility(View.VISIBLE);
+                        } else {
+                            overtimeHoursTextView.setVisibility(View.GONE);
+                        }
+
+                        if (result.getHolidayHours() > 0) {
+                            holidayHoursTextView.setText(String.format(Locale.KOREA, 
+                                "휴일 근무시간: %.1f시간 (%s)", 
+                                result.getHolidayHours(), 
+                                currencyFormat.format(result.getHolidayPay())));
+                            holidayHoursTextView.setVisibility(View.VISIBLE);
+                        } else {
+                            holidayHoursTextView.setVisibility(View.GONE);
+                        }
+
+                        // 주휴수당 표시 여부 설정
+                        boolean showWeeklyAllowance = result.getWeeklyAllowanceHours() > 0;
+                        weeklyAllowanceHoursTextView.setVisibility(showWeeklyAllowance ? View.VISIBLE : View.GONE);
+                        weeklyAllowancePayTextView.setVisibility(showWeeklyAllowance ? View.VISIBLE : View.GONE);
+
+                        if (showWeeklyAllowance) {
+                            long weeklyMinutes = (long)(result.getWeeklyAllowanceHours() * 60);
+                            long weeklyHours = weeklyMinutes / 60;
+                            long weeklyMins = weeklyMinutes % 60;
+                            weeklyAllowanceHoursTextView.setText(String.format(Locale.KOREA, 
+                                "주휴수당 시간: %d시간 %d분", weeklyHours, weeklyMins));
+                            weeklyAllowancePayTextView.setText(String.format(Locale.KOREA, 
+                                "주휴수당: %s", currencyFormat.format(result.getWeeklyAllowancePay())));
+                        }
                     }
                 });
             } catch (Exception e) {

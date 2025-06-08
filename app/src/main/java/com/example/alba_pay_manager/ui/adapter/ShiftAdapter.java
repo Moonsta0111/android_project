@@ -68,8 +68,9 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
 
         // 근무 시간 계산 (시간과 분으로 표시)
         long diffMillis = endDate.getTime() - startDate.getTime();
-        long hours = TimeUnit.MILLISECONDS.toHours(diffMillis);
-        long minutes = TimeUnit.MILLISECONDS.toMinutes(diffMillis) % 60;
+        long totalMinutes = TimeUnit.MILLISECONDS.toMinutes(diffMillis);
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
         holder.hoursTextView.setText(String.format(Locale.KOREA, "근무 시간: %d시간 %d분", hours, minutes));
     }
 
@@ -89,10 +90,10 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
     }
 
     private double calculateTotalHours(List<Shift> shifts) {
-        double totalHours = 0;
+        long totalMinutes = 0;
         for (Shift shift : shifts) {
             if (shift.getStartTime() == null || shift.getEndTime() == null) {
-                continue; // 시작 시간이나 종료 시간이 null인 경우 건너뜀
+                continue;
             }
 
             Date startDate = toDate(shift.getStartTime());
@@ -101,16 +102,13 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
             long startMillis = startDate.getTime();
             long endMillis = endDate.getTime();
 
-            // 종료 시간이 시작 시간보다 이전인 경우 처리
             if (endMillis <= startMillis) {
-                continue; // 잘못된 시간 데이터는 건너뜀
+                continue;
             }
 
-            // 밀리초를 시간으로 변환 (소수점 1자리까지)
-            double hours = (endMillis - startMillis) / (1000.0 * 60 * 60);
-            totalHours += Math.round(hours * 10) / 10.0; // 소수점 1자리까지 반올림
+            totalMinutes += TimeUnit.MILLISECONDS.toMinutes(endMillis - startMillis);
         }
-        return totalHours;
+        return totalMinutes / 60.0;
     }
 
     static class ShiftViewHolder extends RecyclerView.ViewHolder {
